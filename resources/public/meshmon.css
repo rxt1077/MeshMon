@@ -1,0 +1,32 @@
+.packets-table {
+  overflow-y: scroll;
+  height: 18rem;
+}
+
+.packet-row:hover {
+  background-color: hsl(206, 70%, 96%);
+  cursor: pointer;
+}
+
+.packets-table th {
+  cursor: pointer;
+}
+
+.active-packet-row {
+  background-color: hsl(204, 86%, 53%);
+}
+
+.packet-info-title {
+  font-weight: bold;
+}
+
+.packet-info-label {
+  font-weight: bold;
+  text-align: right;
+}
+
+.data-info, .user-info, .position-info {
+  margin-top: 1.5rem;
+}
+
+#map { height: 30rem; }
