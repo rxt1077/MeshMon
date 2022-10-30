@@ -3,7 +3,7 @@
   height: 18rem;
 }
 
-.packet-row:hover {
+.packet-row:hover, .node-row:hover {
   background-color: hsl(206, 70%, 96%);
   cursor: pointer;
 }
@@ -12,7 +12,7 @@
   cursor: pointer;
 }
 
-.active-packet-row {
+.active-packet-row, .active-node-row {
   background-color: hsl(204, 86%, 53%);
 }
 

@@ -21,3 +21,13 @@
  ::packets-sorted-by
  (fn [db]
    (:packets-sorted-by db)))
+
+(re-frame/reg-sub
+ ::nodes
+ (fn [db]
+   (:nodes db)))
+
+(re-frame/reg-sub
+ ::active-node
+ (fn [db]
+   (:active-node db)))

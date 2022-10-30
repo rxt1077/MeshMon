@@ -43,10 +43,40 @@
               :packets-sorted-by [packet-key :ascending]
               :loaded-packets (sort-by-packets packet-key :ascending loaded-packets))))))
 
+(defn decode-packet [packet]
+  (assoc packet :decoded (js->clj (.parse js/JSON (:decoded packet)) :keywordize-keys true)))
+
+(defn update-nodes [nodes decoded-packets]
+  "Returns an updated `nodes` list based on a list of decoded packets." 
+  doall(
+    reduce
+      (fn [new-nodes packet]
+        (let [id (:from packet)
+              node (get new-nodes id
+                        {:last-nodeinfo-packet nil
+                         :last-position-packet nil
+                         :last-heard nil
+                         :selected false})]
+          (assoc new-nodes id
+                 (case (:port packet)
+                   "NODEINFO_APP"
+                   (assoc node
+                          :last-heard (:rxTime packet)
+                          :last-nodeinfo-packet packet)
+                  "POSITION_APP"
+                   (assoc node
+                          :last-heard (:rxTime packet)
+                          :last-position-packet packet)))))
+      nodes
+      decoded-packets))
+
 (re-frame/reg-event-db
  :process-packets
  (fn-traced [db [_ response]]
-   (assoc db :loaded-packets response)))
+   (let [decoded-packets (map decode-packet response)]
+     (assoc db
+            :loaded-packets decoded-packets
+            :nodes (update-nodes (:nodes db) decoded-packets)))))
 
 (re-frame/reg-event-db
  :bad-response
@@ -61,3 +91,8 @@
                  :response-format (ajax/json-response-format {:keywords? true})
                  :on-success [:process-packets]
                  :on-failure [:bad-response]}}))
+
+(re-frame/reg-event-db
+ ::toggle-node
+ (fn-traced [db [_ id]]
+   (assoc db :active-node (if (= (:active-node db) id) nil id))))
