@@ -25,7 +25,7 @@
   text-align: right;
 }
 
-.data-info, .user-info, .position-info {
+.data-info, .user-info, .position-info, .telemetry-info, .text-info, .device-metrics-info {
   margin-top: 1.5rem;
 }
 

@@ -55,6 +55,7 @@
               node (get new-nodes id
                         {:last-nodeinfo-packet nil
                          :last-position-packet nil
+                         :last-telemetry-packet nil
                          :last-heard nil
                          :selected false})]
           (assoc new-nodes id
@@ -66,7 +67,15 @@
                   "POSITION_APP"
                    (assoc node
                           :last-heard (:rxTime packet)
-                          :last-position-packet packet)))))
+                          :last-position-packet packet)
+                  "TELEMETRY_APP"
+                   (assoc node
+                          :last-heard (:rxTime packet)
+                          :last-telemetry-packet packet)
+                   "TEXT_MESSAGE_APP"
+                   (assoc node
+                          :last-heard (:rxTime packet)
+                          :last-telemetry-packet packet)))))
       nodes
       decoded-packets))
 

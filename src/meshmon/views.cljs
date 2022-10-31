@@ -15,6 +15,7 @@
 (defn nodes-row [[id node]]
   (let [nodeinfo-payload (:payload (:decoded (:last-nodeinfo-packet node)))
         position-payload (:payload (:decoded (:last-position-packet node)))
+        telemetry-payload (:payload (:decoded (:last-telemetry-packet node)))
         active-node (re-frame/subscribe [::subs/active-node])]
     [:tr {:class (if (= id @active-node) "active-node-row" "node-row")
           :key id
@@ -22,7 +23,7 @@
      [:td (:shortName nodeinfo-payload)]
      [:td (:longName nodeinfo-payload)]
      [:td (utils/latlon-to-str (:latitudeI position-payload)) ", " (utils/latlon-to-str (:longitudeI position-payload))]
-     [:td "Battery"]
+     [:td (if (contains? telemetry-payload :deviceMetrics) (str (:batteryLevel (:deviceMetrics telemetry-payload)) "%"))]
      [:td (utils/ts-to-str (:last-heard node))]]))
 
 (defn nodes-table []
@@ -38,34 +39,15 @@
     (let [nodes (re-frame/subscribe [::subs/nodes])]
       (doall (map nodes-row @nodes)))]])
 
-(defn total-latlon [nodes]
-  "Returns a vector with the sum of all the integer latitudes and longitudes in
-  the nodes list."
-  (reduce
-    (fn [total [id node]]
-      (if (some? (:last-position-packet node))
-        (let [position-payload (:payload (:decoded (:last-position-packet node)))]
-          [(+ (first total) (:latitudeI position-payload)) (+ (second total) (:longitudeI position-payload))])
-        total))
-    [0 0]
-    nodes))
-
-(defn nodes-center [nodes]
-  "Returns the average latitude and longitude for a map of nodes."
-  (let [total (total-latlon nodes)
-        count-nodes (count nodes)]
-    [(* (/ (first total) count-nodes) 1e-7)
-     (* (/ (second total) count-nodes) 1e-7)]))
-
-(defn center-map! [nodes]
+(defn fit-map! [nodes]
   "Used as a react component inside a MapContainer this function uses useMap
-  to center the map on the nodes if there are any or on [0 0]."
- (let [center (if (not-empty nodes) (nodes-center nodes) [0 0])
-       _ (.setView (useMap) (clj->js center) 13)]
+  to fit the map on the nodes if there are any or on [[-90 -180] [90 180]]."
+ (let [bounds (if (not-empty nodes) (utils/get-bounds nodes) [[-90 -180] [90 180]])
+       _ (.fitBounds (useMap) (clj->js bounds))]
     [:div])) ;; have to return something I guess :)
 
 (defn nodes-marker [[id node]]
-  "This function is mean to be called by map with the nodes map. It creates
+  "This function is meant to be called by map with the nodes map. It creates
   markers and popups for each node."
   (if (some? (:last-position-packet node))
     (let [position-payload (:payload (:decoded (:last-position-packet node)))
@@ -91,7 +73,7 @@
        {:attribution "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
         :url "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}]
       (doall (map nodes-marker @nodes))
-      [:f> center-map! @nodes]]))
+      [:f> fit-map! @nodes]]))
 
 (defn nodes []
   [:div
@@ -229,6 +211,26 @@
     (packet-info-col "Next Update: " (:nextUpdate payload) " s")
     (packet-info-col "Sequence Number: " (:seqNumber payload) "")]])
 
+(defn device-metrics-info [device-metrics]
+  [:div {:class "device-metrics-info"}
+   [:div {:class "packet-info-title"} "Device Metrics"]
+   [:div {:class "columns is-multiline is-gapless"}
+    (packet-info-col "Battery Level: " (:batteryLevel device-metrics) "%")
+    (packet-info-col "Voltage: " (:voltage device-metrics) "V")
+    (packet-info-col "Channel Utilization: " (:channelUtilization device-metrics) "%")
+    (packet-info-col "Tx Airtime Utilization: " (:airUtilTx device-metrics) "%")]])
+
+(defn telemetry-info [payload]
+  [:div {:class "telemetry-info"}
+   [:div {:class "packet-info-title"} "Telemetry"]
+   [:div {:class "columns is-multiline is-gapless"}
+    (packet-info-col "Time: " (utils/ts-to-str (:time payload)) "")]]
+  (if (contains? payload :deviceMetrics)
+    (device-metrics-info (:deviceMetrics payload))))
+
+(defn text-info [payload]
+  [:div {:class "text-info"} payload])
+
 (defn packet-info []
   (let [packet (re-frame/subscribe [::subs/active-packet])]
     (if (nil? @packet)
@@ -238,7 +240,9 @@
        (data-info (:decoded @packet))
        (case (:portnum (:decoded @packet))
          "NODEINFO_APP" (user-info (:payload (:decoded @packet)))
-         "POSITION_APP" (position-info (:payload (:decoded @packet))))])))
+         "POSITION_APP" (position-info (:payload (:decoded @packet)))
+         "TELEMETRY_APP" (telemetry-info (:payload (:decoded @packet)))
+         "TEXT_MESSAGE_APP" (text-info (:payload (:decoded @packet))))])))
 
 (defn packets []
   [:div
