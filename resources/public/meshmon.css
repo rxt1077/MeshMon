@@ -29,4 +29,24 @@
   margin-top: 1.5rem;
 }
 
+.chat-ts {
+  margin-right: 1.0rem;
+}
+
+.chat-name {
+  margin-right: 1.0rem;
+}
+
+.actions {
+  margin-bottom: 1.0rem;
+}
+
+.actions button {
+  margin-right: 1.0rem;
+}
+
+.actions label {
+  margin-left: 1.0rem;
+}
+
 #map { height: 30rem; }

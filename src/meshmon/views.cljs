@@ -75,15 +75,31 @@
       (doall (map nodes-marker @nodes))
       [:f> fit-map! @nodes]]))
 
+(defn nodes-chat-row [nodes packet]
+  "Returns a div representing a message from a TEXT_MESSAGE_APP packet"
+  (let [id (:from packet)
+        nodeinfo (:payload (:decoded (:last-nodeinfo-packet (get nodes id))))
+        long-name (:longName nodeinfo)]
+    [:div {:key (:rowId packet)} 
+     [:span {:class "chat-ts"} (utils/ts-to-str (:rxTime packet))]
+     [:span {:class "chat-name"} (if (nil? long-name) id long-name) ]
+     [:span {:class "chat-text"} (:payload (:decoded packet))]]))
+
+(defn nodes-chat []
+  "Returns a display of the chat messages in the loaded packets"
+  [:div {:class "nodes-chat"}
+   [:h5 {:class "title is-5"} "Chat Messages"]
+   (let [packets (re-frame/subscribe [::subs/loaded-packets])
+         nodes (re-frame/subscribe [::subs/nodes])
+         text-packets (filter #(= (:port %) "TEXT_MESSAGE_APP") @packets)]
+     (doall (map #(nodes-chat-row @nodes %) text-packets)))])
+
 (defn nodes []
   [:div
-    [:div
-      [:div  "Actions (loading packets, etc.)"]
-      [:button {:class "button" :on-click #(re-frame/dispatch [::events/get-packets])} "Get Packets"]]
     [:div {:class "columns"}
-     [:div {:class "column is-third"} (nodes-table)]
-     [:div {:class "column is-third"} (nodes-map)]]
-    [:div {:class "column is-third"} "Chat"]])
+     [:div {:class "column is-half"} (nodes-table)]
+     [:div {:class "column is-half"} (nodes-map)]]
+    (nodes-chat)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Packets View ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -136,8 +152,12 @@
        (packets-table-th "rx_rssi" :rxRssi)
        (packets-table-th "rx_snr" :rxSnr)]]
      [:tbody
-      (let [packets (re-frame/subscribe [::subs/loaded-packets])]
-        (doall (map packet-row @packets)))]]])
+      (let [[sort-key sort-dir] @(re-frame/subscribe [::subs/packets-sorted-by])
+            packets @(re-frame/subscribe [::subs/loaded-packets])
+            sorted-packets (if (= sort-dir :ascending)
+                             (sort-by sort-key packets)
+                             (sort-by sort-key #(compare %2 %1) packets))]
+        (doall (map packet-row sorted-packets)))]]])
 
 (defn packet-info-col [label data units]
   [:div {:class "column is-3"}
@@ -274,8 +294,38 @@
       "Nodes" (nodes)
       "Packets" (packets))))
 
+(defn actions []
+  "Returns the list of actions a user can take: load packets, etc."
+  (let [start-ts @(re-frame/subscribe [::subs/start-ts])
+        end-ts @(re-frame/subscribe [::subs/end-ts])]
+    [:div {:class "actions"}
+     [:h5 {:class "title is-5"} "Actions"]
+     [:div {:class "field is-horizontal"}
+      [:button {:class "button"
+                :on-click #(re-frame/dispatch [::events/get-all-packets])} "Get All Packets"]
+      [:button {:class "button"
+                :on-click #(re-frame/dispatch [::events/get-next-packet])} "Get Next Packet"]
+      [:button {:class "button"
+                :on-click #(re-frame/dispatch [::events/get-new-packets])} "Get New Packets"]
+      [:button {:class "button"} "Get Packets in Range"]
+      [:div {:class "field-label is-normal"}
+       [:label {:class "label"} "Start"]]
+      [:input {:class "input"
+               :type "datetime-local"
+               :step 1
+               :value (utils/ts-to-datetime-local start-ts)
+               :on-change #(re-frame/dispatch [::events/set-start-ts (-> % .-target .-value)])}]
+      [:div {:class "field-label is-normal"}
+       [:label {:class "label"} "End"]]
+      [:input {:class "input"
+               :type "datetime-local"
+               :step 1
+               :value (utils/ts-to-datetime-local end-ts)
+               :on-change #(re-frame/dispatch [::events/set-end-ts (-> % .-target .-value)])}]]]))
+
 (defn app []
  [:div
   [:h1 {:class "title"} "MeshMon"]
+  (actions)
   (tabs)
   (panel)])

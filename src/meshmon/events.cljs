@@ -4,6 +4,7 @@
    [day8.re-frame.http-fx]
    [day8.re-frame.tracing :refer-macros [fn-traced]]
    [meshmon.db :as db]
+   [meshmon.utils :as utils]
    [re-frame.core :as re-frame]
    ))
 
@@ -33,15 +34,15 @@
 (re-frame/reg-event-db
  ::sort-packets
  (fn-traced [db [_ packet-key]]
-   (let [[prev-key prev-direction] (:packets-sorted-by db)
-         loaded-packets (:loaded-packets db)]
+   (let [[prev-key prev-direction] (:packets-sorted-by db)]
+;;         loaded-packets (:loaded-packets db)]
      (if (= prev-key packet-key)
        (assoc db
-              :packets-sorted-by [packet-key (switch-direction prev-direction)]
-              :loaded-packets (sort-by-packets packet-key (switch-direction prev-direction) loaded-packets))
+              :packets-sorted-by [packet-key (switch-direction prev-direction)])
+              ;;:loaded-packets (sort-by-packets packet-key (switch-direction prev-direction) loaded-packets))
        (assoc db
-              :packets-sorted-by [packet-key :ascending]
-              :loaded-packets (sort-by-packets packet-key :ascending loaded-packets))))))
+              :packets-sorted-by [packet-key :ascending])))))
+              ;;:loaded-packets (sort-by-packets packet-key :ascending loaded-packets))))))
 
 (defn decode-packet [packet]
   (assoc packet :decoded (js->clj (.parse js/JSON (:decoded packet)) :keywordize-keys true)))
@@ -80,11 +81,19 @@
       decoded-packets))
 
 (re-frame/reg-event-db
- :process-packets
+ :process-packets-replace
  (fn-traced [db [_ response]]
    (let [decoded-packets (map decode-packet response)]
      (assoc db
             :loaded-packets decoded-packets
+            :nodes (update-nodes (:nodes db) decoded-packets)))))
+
+(re-frame/reg-event-db
+ :process-packets-append
+ (fn-traced [db [_ response]]
+   (let [decoded-packets (map decode-packet response)]
+     (assoc db
+            :loaded-packets (into (:loaded-packets db) decoded-packets)
             :nodes (update-nodes (:nodes db) decoded-packets)))))
 
 (re-frame/reg-event-db
@@ -93,15 +102,45 @@
    (assoc db :errors response)))
 
 (re-frame/reg-event-fx
- ::get-packets
+ ::get-all-packets
  (fn-traced [_ _]
    {:http-xhrio {:method :get
                  :uri "http://localhost:5000/packets"
                  :response-format (ajax/json-response-format {:keywords? true})
-                 :on-success [:process-packets]
+                 :on-success [:process-packets-replace]
+                 :on-failure [:bad-response]}}))
+
+(re-frame/reg-event-fx
+ ::get-next-packet
+ (fn-traced [cofx _]
+   {:http-xhrio {:method :get
+                 :uri (str "http://localhost:5000/packets/one-after/"
+                           (:rowId (last (:loaded-packets (:db cofx)))))
+                 :response-format (ajax/json-response-format {:keywords? true})
+                 :on-success [:process-packets-append]
+                 :on-failure [:bad-response]}}))
+
+(re-frame/reg-event-fx
+ ::get-new-packets
+ (fn-traced [cofx _]
+   {:http-xhrio {:method :get
+                 :uri (str "http://localhost:5000/packets/after/"
+                           (:rowId (last (:loaded-packets (:db cofx)))))
+                 :response-format (ajax/json-response-format {:keywords? true})
+                 :on-success [:process-packets-append]
                  :on-failure [:bad-response]}}))
 
 (re-frame/reg-event-db
  ::toggle-node
  (fn-traced [db [_ id]]
    (assoc db :active-node (if (= (:active-node db) id) nil id))))
+
+(re-frame/reg-event-db
+ ::set-start-ts
+ (fn-traced [db [_ value]]
+   (assoc db :start-ts (utils/datetime-local-to-ts value))))
+
+(re-frame/reg-event-db
+ ::set-end-ts
+ (fn-traced [db [_ value]]
+   (assoc db :end-ts (utils/datetime-local-to-ts value))))

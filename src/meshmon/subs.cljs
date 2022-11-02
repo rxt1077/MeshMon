@@ -31,3 +31,13 @@
  ::active-node
  (fn [db]
    (:active-node db)))
+
+(re-frame/reg-sub
+ ::start-ts
+ (fn [db]
+   (:start-ts db)))
+
+(re-frame/reg-sub
+ ::end-ts
+ (fn [db]
+   (:end-ts db)))

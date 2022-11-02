@@ -1,9 +1,5 @@
 (ns meshmon.utils)
 
-(defn ts-to-str [ts]
-  "Converts a timestamp in seconds since the epoch to the ISO string version."
-  (.toISOString (new js/Date (* ts 1000))))
-
 (defn latlon-to-str [x]
   "Converts a latitude of longitude represented as an int to a string with the degree symbol."
   (str (.toFixed (* x 1e-7) 5) "°"))
@@ -42,3 +38,31 @@
         min-lat (apply min lats)
         min-lon (apply min lons)]
     [[min-lat min-lon] [max-lat max-lon]]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;; Timestamp Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn ts-to-str [ts]
+  "Converts a timestamp in seconds since the epoch to the ISO string version."
+  (.toLocaleString (new js/Date (* ts 1000))))
+
+(defn js-to-datetime-local [js-date]
+  "Takes a JS Date and returns a string that can be used in an HTML
+  datetime-local input.
+  Source: https://dev.to/mendyberger/input-and-js-dates-2lhc"
+  (clojure.string/replace
+    (.toLocaleString
+      js-date "sv-SE" (clj->js {:year "numeric" :month "2-digit" :day "2-digit"
+                                :hour "2-digit" :minute "2-digit"
+                                :second "2-digit"})) " " "T"))
+
+(defn datetime-local-to-ts [datetime-local-date]
+  "Takes the value of a datetime-local HTML input and converts it to seconds
+  since the Epoch in UTC."
+  (int (/ (.getTime (new js/Date datetime-local-date)) 1000)))
+
+(defn ts-to-datetime-local [ts]
+  "Takes a timestamp in seconds since the Epoch UTIC and converts it to a
+  string that can be used by a datetime-local HTML input."
+  (js-to-datetime-local (new js/Date (* ts 1000))))
