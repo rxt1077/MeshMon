@@ -2,7 +2,7 @@
   (:require
    [re-frame.core :as re-frame]
    [reagent.core :as reagent]
-   [react-leaflet :refer (MapContainer TileLayer Marker Tooltip useMap)]
+   [react-leaflet :refer (MapContainer TileLayer Marker Tooltip useMap Circle)]
    [meshmon.subs :as subs]
    [meshmon.events :as events]
    [meshmon.utils :as utils]
@@ -24,7 +24,8 @@
      [:td (if (some? short-name) short-name "???")]
      [:td (if (some? long-name)
             [:a {:on-click #(re-frame/dispatch [::events/switch-packet nodeinfo])}
-                 long-name id])]
+                 long-name]
+            id)]
      [:td (if (some? position-payload)
             [:a {:on-click #(re-frame/dispatch [::events/switch-packet position])}
              (str (utils/latlon-to-str (:latitudeI position-payload)) ", "
@@ -65,20 +66,34 @@
   markers and popups for each node."
   (if (some? (:last-position-packet node))
     (let [position-payload (:payload (:decoded (:last-position-packet node)))
-         latitude (* (:latitudeI position-payload) 1e-7)
-         longitude (* (:longitudeI position-payload) 1e-7)
-         active-node (re-frame/subscribe [::subs/active-node])]
+          nodeinfo-payload (:payload (:decoded (:last-nodeinfo-packet node)))
+          latitude (* (:latitudeI position-payload) 1e-7)
+          longitude (* (:longitudeI position-payload) 1e-7)
+          active-node @(re-frame/subscribe [::subs/active-node])
+          long-name (:longName nodeinfo-payload)]
       [(reagent/adapt-react-class Marker)
        {:key id
         :position [latitude, longitude]
         :eventHandlers {:click #(re-frame/dispatch [::events/toggle-node id])}}
-       (if (= id @active-node)
+       (if (= id active-node)
          [(reagent/adapt-react-class Tooltip)
           {:permanent true}
-          (:longName (:payload (:decoded (:last-nodeinfo-packet node))))])])))
+          (if (some? long-name) long-name "???")])])))
+
+(defn breadcrumb [position-packet]
+  "Returns a react-leaflet <Circle> with the center on the lat/lon reported by
+  a position packet"
+  (let [position-payload (:payload (:decoded position-packet))
+        latitude (* (:latitudeI position-payload) 1e-7)
+        longitude (* (:longitudeI position-payload) 1e-7)
+        center (clj->js [latitude longitude])]
+    [(reagent/adapt-react-class Circle) {:key (:rowId position-packet) :center center}]))
 
 (defn nodes-map []
-   (let [nodes (re-frame/subscribe [::subs/nodes])]
+  "Draws the map on the screen, fits it to the nodes, and draws breadcrumbs."
+   (let [nodes @(re-frame/subscribe [::subs/nodes])
+         active-node @(re-frame/subscribe [::subs/active-node])
+         loaded-packets @(re-frame/subscribe [::subs/loaded-packets])]
      [(reagent/adapt-react-class MapContainer)
       {:id "map"
        ;;:zoom 13
@@ -86,8 +101,14 @@
       [(reagent/adapt-react-class TileLayer)
        {:attribution "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
         :url "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}]
-      (doall (map nodes-marker @nodes))
-      [:f> fit-map! @nodes]]))
+      (doall (map nodes-marker nodes))
+      [:f> fit-map! nodes]
+      (if (some? active-node)
+        (map breadcrumb
+             (take-last 10
+                        (filter #(and (= (:port %) "POSITION_APP")
+                                      (= (:from %) active-node))
+                                loaded-packets))))]))
 
 (defn nodes-chat-row [nodes packet]
   "Returns a div representing a message from a TEXT_MESSAGE_APP packet"
