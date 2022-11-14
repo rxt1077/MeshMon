@@ -1,7 +1,8 @@
 # MeshMon
 
+[![MeshMon Video Intro](https://img.youtube.com/vi/28LVdLVDF6k/maxresdefault.jpg)](https://youtu.be/28LVdLVDF6k)
+
 A [re-frame](https://github.com/day8/re-frame) application designed to view packets from a [Meshtastic](https://meshtastic.org/) node. 
-you.
 
 ## Getting Started
 
