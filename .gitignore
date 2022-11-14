@@ -13,3 +13,7 @@
 
 # shadow-cljs cache, port files
 /.shadow-cljs/
+
+# ignore back_end database and virtual environment
+/src/back_end/*.db
+/src/back_end/venv/
