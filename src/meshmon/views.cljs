@@ -13,16 +13,26 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn nodes-row [[id node]]
-  (let [nodeinfo-payload (:payload (:decoded (:last-nodeinfo-packet node)))
-        position-payload (:payload (:decoded (:last-position-packet node)))
+  "Returns a <tr> for a node in the `node` map"
+  (let [nodeinfo (:last-nodeinfo-packet node)
+        nodeinfo-payload (:payload (:decoded nodeinfo))
+        position (:last-position-packet node)
+        position-payload (:payload (:decoded position))
         telemetry-payload (:payload (:decoded (:last-telemetry-packet node)))
-        active-node (re-frame/subscribe [::subs/active-node])]
+        active-node (re-frame/subscribe [::subs/active-node])
+        short-name (:shortName nodeinfo-payload)
+        long-name (:longName nodeinfo-payload)]
     [:tr {:class (if (= id @active-node) "active-node-row" "node-row")
           :key id
           :on-click #(re-frame/dispatch [::events/toggle-node id])}
-     [:td (:shortName nodeinfo-payload)]
-     [:td (:longName nodeinfo-payload)]
-     [:td (utils/latlon-to-str (:latitudeI position-payload)) ", " (utils/latlon-to-str (:longitudeI position-payload))]
+     [:td (if (some? short-name) short-name "???")]
+     [:td (if (some? long-name)
+            [:a {:on-click #(re-frame/dispatch [::events/switch-packet nodeinfo])}
+                 long-name id])]
+     [:td (if (some? position-payload)
+            [:a {:on-click #(re-frame/dispatch [::events/switch-packet position])}
+             (str (utils/latlon-to-str (:latitudeI position-payload)) ", "
+                  (utils/latlon-to-str (:longitudeI position-payload)))])]
      [:td (if (contains? telemetry-payload :deviceMetrics) (str (:batteryLevel (:deviceMetrics telemetry-payload)) "%"))]
      [:td (utils/ts-to-str (:last-heard node))]]))
 
@@ -39,10 +49,18 @@
     (let [nodes (re-frame/subscribe [::subs/nodes])]
       (doall (map nodes-row @nodes)))]])
 
+(defn position-packet-in-nodes? [nodes]
+  "Returns true if there is at least one position packet in the nodes map"
+  (> (count (filter
+              (fn [[_ value]] (some? (:last-position-packet value)))
+              nodes))
+     0))
+
 (defn fit-map! [nodes]
   "Used as a react component inside a MapContainer this function uses useMap
   to fit the map on the nodes if there are any or on [[-90 -180] [90 180]]."
- (let [bounds (if (not-empty nodes) (utils/get-bounds nodes) [[-90 -180] [90 180]])
+ (let [bounds (if (position-packet-in-nodes? nodes)
+                (utils/get-bounds nodes) [[-90 -180] [90 180]])
        _ (.fitBounds (useMap) (clj->js bounds))]
     [:div])) ;; have to return something I guess :)
 
@@ -81,7 +99,9 @@
         nodeinfo (:payload (:decoded (:last-nodeinfo-packet (get nodes id))))
         long-name (:longName nodeinfo)]
     [:div {:key (:rowId packet)} 
-     [:span {:class "chat-ts"} (utils/ts-to-str (:rxTime packet))]
+     [:span {:class "chat-ts"}
+      [:a {:on-click #(re-frame/dispatch [::events/switch-packet packet])}
+       (utils/ts-to-str (:rxTime packet))]]
      [:span {:class "chat-name"} (if (nil? long-name) id long-name) ]
      [:span {:class "chat-text"} (:payload (:decoded packet))]]))
 
@@ -106,15 +126,19 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn packet-row [packet]
-  (let [active-packet (re-frame/subscribe [::subs/active-packet])]
+ "Takes a `packet`, the `active-packet`, and the `nodes` map and returns a <tr>
+ for a single packet" 
+  (let [active-packet (re-frame/subscribe [::subs/active-packet])
+        nodes @(re-frame/subscribe [::subs/nodes])
+        to (utils/id-with-short-name nodes (:to packet))
+        from (utils/id-with-short-name nodes (:from packet))]
     [:tr
      {:class (if (= @active-packet packet) "active-packet-row" "packet-row")
       :on-click #(re-frame/dispatch [::events/switch-packet packet])
       :key (:rowId packet)}
      [:td (utils/ts-to-str (:rxTime packet))]
-     [:td (:id packet)]
-     [:td (:to packet)]
-     [:td (:from packet)]
+     [:td to]
+     [:td from]
      [:td (:port packet)]
      [:td (:channel packet)]
      [:td (:hopLimit packet)]
@@ -135,42 +159,49 @@
          [:i {:class "fa-solid fa-caret-down"}]))]))
 
 (defn packets-table []
-  [:div {:class "table-container packets-table"}
-    [:table {:class "table is-bordered is-narrow is-fullwidth"}
-     [:thead
-      [:tr
-       (packets-table-th "rx_time" :rxTime)
-       (packets-table-th "id" :id)
-       (packets-table-th "to" :to)
-       (packets-table-th "from" :from)
-       (packets-table-th "port" :port)
-       (packets-table-th "channel" :channel)
-       (packets-table-th "hop_limit" :hopLimit)
-       (packets-table-th "priority" :priority)
-       (packets-table-th "want_ack" :wantAck)
-       (packets-table-th "delayed" :delayed)
-       (packets-table-th "rx_rssi" :rxRssi)
-       (packets-table-th "rx_snr" :rxSnr)]]
-     [:tbody
-      (let [[sort-key sort-dir] @(re-frame/subscribe [::subs/packets-sorted-by])
-            packets @(re-frame/subscribe [::subs/loaded-packets])
-            sorted-packets (if (= sort-dir :ascending)
-                             (sort-by sort-key packets)
-                             (sort-by sort-key #(compare %2 %1) packets))]
-        (doall (map packet-row sorted-packets)))]]])
+  (reagent/create-class
+    {:display-name "packets-table"
+     :component-did-mount
+     ;; make sure active packet is visible, we may come here from elsewhere
+     (fn [this]
+       (when-let [el (first (js/document.getElementsByClassName "active-packet-row"))]
+         (.scrollIntoView el)))
+     :reagent-render
+     (fn []
+       [:div {:class "table-container packets-table"}
+         [:table {:class "table is-bordered is-narrow is-fullwidth"}
+          [:thead
+           [:tr
+            (packets-table-th "rx_time" :rxTime)
+            (packets-table-th "to" :to)
+            (packets-table-th "from" :from)
+            (packets-table-th "port" :port)
+            (packets-table-th "channel" :channel)
+            (packets-table-th "hop_limit" :hopLimit)
+            (packets-table-th "priority" :priority)
+            (packets-table-th "want_ack" :wantAck)
+            (packets-table-th "delayed" :delayed)
+            (packets-table-th "rx_rssi" :rxRssi)
+            (packets-table-th "rx_snr" :rxSnr)]]
+          [:tbody
+           (let [[sort-key sort-dir] @(re-frame/subscribe [::subs/packets-sorted-by])
+                 packets @(re-frame/subscribe [::subs/loaded-packets])
+                 sorted-packets (if (= sort-dir :ascending)
+                                  (sort-by sort-key packets)
+                                  (sort-by sort-key #(compare %2 %1) packets))]
+             (doall (map packet-row sorted-packets)))]]])}))
 
 (defn packet-info-col [label data units]
   [:div {:class "column is-3"}
    [:span {:class "packet-info-title"} label] " "
    (if (boolean? data) (if data "True" "False") data) units ])
 
-
-(defn mesh-packet-info [packet]
+(defn mesh-packet-info [nodes packet]
   [:div {:class "mesh-packet-info"}
    [:div {:class "packet-info-title"} "MeshPacket"]
    [:div {:class "columns is-multiline is-gapless"}
-    (packet-info-col "To:" (:to packet) "") 
-    (packet-info-col "From:" (:from packet) "") 
+    (packet-info-col "To:" (utils/id-with-short-name nodes (:to packet)) "") 
+    (packet-info-col "From:" (utils/id-with-short-name nodes (:from packet)) "") 
     (packet-info-col "ID:" (:id packet) "") 
     (packet-info-col "rx Time:" (utils/ts-to-str (:rxTime packet)) "")
     (packet-info-col "rx RSSI:" (:rxRssi packet) " dBm")
@@ -252,21 +283,22 @@
   [:div {:class "text-info"} payload])
 
 (defn packet-info []
-  (let [packet (re-frame/subscribe [::subs/active-packet])]
-    (if (nil? @packet)
+  (let [packet @(re-frame/subscribe [::subs/active-packet])
+        nodes @(re-frame/subscribe [::subs/nodes])]
+    (if (nil? packet)
       [:div {:class "box"} "Click on a packet to see more"]
       [:div {:class "box"}
-       (mesh-packet-info @packet)
-       (data-info (:decoded @packet))
-       (case (:portnum (:decoded @packet))
-         "NODEINFO_APP" (user-info (:payload (:decoded @packet)))
-         "POSITION_APP" (position-info (:payload (:decoded @packet)))
-         "TELEMETRY_APP" (telemetry-info (:payload (:decoded @packet)))
-         "TEXT_MESSAGE_APP" (text-info (:payload (:decoded @packet))))])))
+       (mesh-packet-info nodes packet)
+       (data-info (:decoded packet))
+       (case (:portnum (:decoded packet))
+         "NODEINFO_APP" (user-info (:payload (:decoded packet)))
+         "POSITION_APP" (position-info (:payload (:decoded packet)))
+         "TELEMETRY_APP" (telemetry-info (:payload (:decoded packet)))
+         "TEXT_MESSAGE_APP" (text-info (:payload (:decoded packet))))])))
 
 (defn packets []
   [:div
-    (packets-table)
+    (reagent/as-element [packets-table])
     (packet-info)
   ])
 
@@ -279,25 +311,26 @@
     [:li
      (if (= tab-name @active-tab-name)
        {:class "is-active"}
-       {})
-     [:a {:on-click #(re-frame/dispatch [::events/switch-tab tab-name])} tab-name]]))
+       {:class ""})
+     [:a {:class "title is-5" :on-click #(re-frame/dispatch [::events/switch-tab tab-name])} tab-name]]))
 
 (defn tabs []
   [:div {:class "tabs"}
    [:ul
-    (tab-item "Nodes")
-    (tab-item "Packets")]])
+    (tab-item "Packets")
+    (tab-item "Nodes")]])
 
 (defn panel []
-  (let [active-tab-name (re-frame/subscribe [::subs/active-tab-name])]
-    (case @active-tab-name
-      "Nodes" (nodes)
-      "Packets" (packets))))
+  (let [active-tab-name @(re-frame/subscribe [::subs/active-tab-name])]
+    (case active-tab-name
+      "Packets" (packets)
+      "Nodes" (nodes))))
 
 (defn actions []
   "Returns the list of actions a user can take: load packets, etc."
   (let [start-ts @(re-frame/subscribe [::subs/start-ts])
-        end-ts @(re-frame/subscribe [::subs/end-ts])]
+        end-ts @(re-frame/subscribe [::subs/end-ts])
+        active-tab-name @(re-frame/subscribe [::subs/active-tab-name])]
     [:div {:class "actions"}
      [:h5 {:class "title is-5"} "Actions"]
      [:div {:class "field is-horizontal"}
@@ -307,7 +340,8 @@
                 :on-click #(re-frame/dispatch [::events/get-next-packet])} "Get Next Packet"]
       [:button {:class "button"
                 :on-click #(re-frame/dispatch [::events/get-new-packets])} "Get New Packets"]
-      [:button {:class "button"} "Get Packets in Range"]
+      [:button {:class "button"
+                :on-click #(re-frame/dispatch [::events/get-range-packets])} "Get Packets In Range"]
       [:div {:class "field-label is-normal"}
        [:label {:class "label"} "Start"]]
       [:input {:class "input"
@@ -321,7 +355,14 @@
                :type "datetime-local"
                :step 1
                :value (utils/ts-to-datetime-local end-ts)
-               :on-change #(re-frame/dispatch [::events/set-end-ts (-> % .-target .-value)])}]]]))
+               :on-change #(re-frame/dispatch [::events/set-end-ts (-> % .-target .-value)])}]]
+     ;; these actions only make sense when you can see the selected packet
+     (if (= active-tab-name "Packets")
+       [:div {:class "field is-horizontal"}
+        [:button {:class "button"
+                  :on-click #(re-frame/dispatch [::events/drop-packets :before])} "Drop Packets Before Selected"]
+        [:button {:class "button"
+                  :on-click #(re-frame/dispatch [::events/drop-packets :after])} "Drop Packets After Selected"]])]))
 
 (defn app []
  [:div

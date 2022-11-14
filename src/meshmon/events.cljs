@@ -19,9 +19,10 @@
    (assoc db :active-tab-name tab-name)))
 
 (re-frame/reg-event-db
+;; makes a new packet active in the loaed-packet table
  ::switch-packet
  (fn-traced [db [_ packet]]
-   (assoc db :active-packet packet)))
+   (assoc db :active-packet packet :active-tab-name "Packets")))
 
 (defn switch-direction [direction]
   (if (= direction :ascending) :descending :ascending))
@@ -35,20 +36,26 @@
  ::sort-packets
  (fn-traced [db [_ packet-key]]
    (let [[prev-key prev-direction] (:packets-sorted-by db)]
-;;         loaded-packets (:loaded-packets db)]
      (if (= prev-key packet-key)
        (assoc db
               :packets-sorted-by [packet-key (switch-direction prev-direction)])
-              ;;:loaded-packets (sort-by-packets packet-key (switch-direction prev-direction) loaded-packets))
        (assoc db
               :packets-sorted-by [packet-key :ascending])))))
-              ;;:loaded-packets (sort-by-packets packet-key :ascending loaded-packets))))))
 
-(defn decode-packet [packet]
-  (assoc packet :decoded (js->clj (.parse js/JSON (:decoded packet)) :keywordize-keys true)))
+(defn decode-packets [packets]
+  "Takes a collection of packets and converts the :decoded field from text to
+  JSON to EDN"
+  (map
+    #(assoc % :decoded
+            (js->clj (.parse js/JSON (:decoded %)) :keywordize-keys true))
+    packets))
 
-(defn update-nodes [nodes decoded-packets]
-  "Returns an updated `nodes` list based on a list of decoded packets." 
+(defn packets->sorted-set [packets]
+  "Takes a collection of packets and puts them in a sorted-set based on rowId"
+  (apply sorted-set-by #(compare (:rowId %1) (:rowId %2)) packets))
+
+(defn create-nodes [decoded-packets]
+  "Returns an `nodes` map based on a set of decoded packets."
   doall(
     reduce
       (fn [new-nodes packet]
@@ -77,24 +84,26 @@
                    (assoc node
                           :last-heard (:rxTime packet)
                           :last-telemetry-packet packet)))))
-      nodes
+      {}
       decoded-packets))
 
+(defn update-db [db packets]
+  "Returns a new db with `loaded-packets` and `nodes` updated"
+   (assoc db
+          :loaded-packets (packets->sorted-set packets)
+          :nodes (create-nodes packets)))
+
 (re-frame/reg-event-db
+;; Replaces the current `:loaded-packets` in the db with a decoded, sorted-set
+;; of packets from the response.
  :process-packets-replace
  (fn-traced [db [_ response]]
-   (let [decoded-packets (map decode-packet response)]
-     (assoc db
-            :loaded-packets decoded-packets
-            :nodes (update-nodes (:nodes db) decoded-packets)))))
+            (update-db db (decode-packets response))))
 
 (re-frame/reg-event-db
  :process-packets-append
  (fn-traced [db [_ response]]
-   (let [decoded-packets (map decode-packet response)]
-     (assoc db
-            :loaded-packets (into (:loaded-packets db) decoded-packets)
-            :nodes (update-nodes (:nodes db) decoded-packets)))))
+            (update-db db (into (:loaded-packets db) (decode-packets response)))))
 
 (re-frame/reg-event-db
  :bad-response
@@ -130,6 +139,19 @@
                  :on-success [:process-packets-append]
                  :on-failure [:bad-response]}}))
 
+(re-frame/reg-event-fx
+ ::get-range-packets
+ (fn-traced [cofx _]
+   (let [db (:db cofx)
+         start-ts (:start-ts db)
+         end-ts (:end-ts db)]
+     {:http-xhrio {:method :get
+                   :uri (str "http://localhost:5000/packets/range/" start-ts "-"
+                             end-ts)
+                   :response-format (ajax/json-response-format {:keywords? true})
+                   :on-success [:process-packets-replace]
+                   :on-failure [:bad-response]}})))
+
 (re-frame/reg-event-db
  ::toggle-node
  (fn-traced [db [_ id]]
@@ -144,3 +166,24 @@
  ::set-end-ts
  (fn-traced [db [_ value]]
    (assoc db :end-ts (utils/datetime-local-to-ts value))))
+
+(re-frame/reg-event-db
+ ::drop-packets
+ ;; Drops packets before the selected packet, taking into account how the
+ ;; packets are sorted
+ (fn-traced [db [_ value]]
+   (let [loaded-packets (:loaded-packets db)
+         [sort-key sort-dir] (:packets-sorted-by db)
+         selected-value (sort-key (:active-packet db))
+         comp-fun ;; comparator function
+         (if (= value :before)
+           ;; drop packets before
+           (if (= sort-dir :ascending)
+             ;; what to keep
+             #(>= (sort-key %) selected-value) #(<= (sort-key %) selected-value))
+           ;; drop packets after
+           (if (= sort-dir :ascending)
+             ;; what to keep
+             #(<= (sort-key %) selected-value) #(>= (sort-key %) selected-value)))
+         new-loaded-packets (filter comp-fun loaded-packets)]
+     (update-db db new-loaded-packets))))

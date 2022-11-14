@@ -1,6 +1,6 @@
-# meshmon
+# MeshMon
 
-A [re-frame](https://github.com/day8/re-frame) application designed to ... well, that part is up to
+A [re-frame](https://github.com/day8/re-frame) application designed to view packets from a [Meshtastic](https://meshtastic.org/) node. 
 you.
 
 ## Getting Started

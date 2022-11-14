@@ -39,6 +39,16 @@
         min-lon (apply min lons)]
     [[min-lat min-lon] [max-lat max-lon]]))
 
+(defn get-short-name [nodes id]
+  "Returns the short name of a node if it is know. Returns nil otherwise."
+  (:shortName (:payload (:decoded (:last-nodeinfo-packet (get nodes id))))))
+
+(defn id-with-short-name [nodes id]
+  "Returns a string that is the id with the short name in parenthesis if it is
+  available."
+  (let [short-name (get-short-name nodes id)]
+   (if (some? short-name) (str id " (" short-name ")") (str id))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Timestamp Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
