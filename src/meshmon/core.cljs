@@ -3,7 +3,7 @@
    [reagent.dom :as rdom]
    [re-frame.core :as re-frame]
    [meshmon.events :as events]
-   [meshmon.views :as views]
+   [meshmon.views.main :as views]
    [meshmon.config :as config]
    ))
 
