@@ -1,10 +1,18 @@
 # MeshMon
 
-[![MeshMon Video Intro](https://img.youtube.com/vi/28LVdLVDF6k/maxresdefault.jpg)](https://youtu.be/28LVdLVDF6k)
+[![MeshMon Introduction](https://img.youtube.com/vi/A3SJ4UDrEVg/maxresdefault.jpg)](https://youtu.be/A3SJ4UDrEVg)
 
-A [re-frame](https://github.com/day8/re-frame) application designed to view packets from a [Meshtastic](https://meshtastic.org/) node. 
+A [re-frame](https://github.com/day8/re-frame) application designed to view packets from a [Meshtastic](https://meshtastic.org/) node.
+MeshMon allows you to see how a Meshtastic network changes over time with a simple packets view as well as a map view of the detected nodes.
+Text messages are shown at the bottom of the Nodes view.
+
+MeshMon focuses on analysis of data _after_ it has been collected and is not focused on being run live.
 
 ## Getting Started
+
+### Back End
+
+See [the back_end directory](https://github.com/rxt1077/MeshMon/tree/master/src/back_end) for information on what needs to run in support of this front end.
 
 ### Project Overview
 
@@ -48,7 +56,6 @@ A [re-frame](https://github.com/day8/re-frame) application designed to view pack
 * [`.github/workflows/`](.github/workflows/): contains the
 [github actions](https://github.com/features/actions) pipelines.
   - [`test.yaml`](.github/workflows/test.yaml): Pipeline for testing.
-
 
 ### Editor/IDE
 
