@@ -2,11 +2,16 @@
 
 [![MeshMon Introduction](https://img.youtube.com/vi/A3SJ4UDrEVg/maxresdefault.jpg)](https://youtu.be/A3SJ4UDrEVg)
 
-A [re-frame](https://github.com/day8/re-frame) application designed to view packets from a [Meshtastic](https://meshtastic.org/) node.
-MeshMon allows you to see how a Meshtastic network changes over time with a simple packets view as well as a map view of the detected nodes.
-Text messages are shown at the bottom of the Nodes view.
+A [re-frame](https://github.com/day8/re-frame) application designed to visualize from a [Meshtastic](https://meshtastic.org/) node.
+MeshMon allows you to see how a Meshtastic network changes over time with a simple packets view as well as a nodes list, map view, and chat view.
+The nodes lists and chat link to the individual packets that were used to garner that data.
 
-MeshMon focuses on analysis of data _after_ it has been collected and is not focused on being run live.
+A simple Python script is used to gather packets (currently only position, telemetry, nodeinfo, and text) and save them to an sqlite3 database.
+A basic Python Flask app is used to provide a JSON API to access the packets.
+
+I have read the docs and agree that protobufs are fantastic for over-the-wire and live applications, but when querying and sorting historical packets are your goal you can't really beat SQL.
+The existing web interface is also excellent, but it is geared towards configuring and using Meshtastic nodes in a live environment.
+MeshMon focuses on analysis of data _after_ it has been collected and is not focused on being run live or performing any live interactions.
 
 ## Getting Started
 
@@ -26,8 +31,12 @@ See [the back_end directory](https://github.com/rxt1077/MeshMon/tree/master/src/
   [FAQs](https://github.com/day8/re-frame/blob/master/docs/FAQs/README.md)) ->
   [Reagent](https://github.com/reagent-project/reagent) ->
   [React](https://github.com/facebook/react)
+  - React components for Leaflet maps: [React Leaflet](https://react-leaflet.js.org/)
 * Build tools
   - CLJS compilation, dependency management, REPL, & hot reload: [`shadow-cljs`](https://github.com/thheller/shadow-cljs)
+* Style
+  - [Bulma](https://bulma.io/)
+  - [Font Awesome](https://fontawesome.com/)
 * Development tools
   - Debugging: [CLJS DevTools](https://github.com/binaryage/cljs-devtools),
   [`re-frame-10x`](https://github.com/day8/re-frame-10x)
@@ -56,6 +65,7 @@ See [the back_end directory](https://github.com/rxt1077/MeshMon/tree/master/src/
 * [`.github/workflows/`](.github/workflows/): contains the
 [github actions](https://github.com/features/actions) pipelines.
   - [`test.yaml`](.github/workflows/test.yaml): Pipeline for testing.
+* [`src/back_end/`](src/back_end): Python utilities for collecting and serving packets
 
 ### Editor/IDE
 
